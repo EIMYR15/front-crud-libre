@@ -20,9 +20,18 @@
           @keyup.enter="fetchGeneros" />
       </v-col>
     </v-row>
-    <v-data-table v-model:page="pagination.page" v-model:items-per-page="pagination.limit" :headers="headers"
-      :items="generos" :server-items-length="pagination.total" :loading="loading" loading-text="Cargando géneros..."
-      class="elevation-1" item-key="id" density="compact">
+    <v-data-table-server
+      v-model:items-per-page="pagination.limit" 
+      :headers="headers"
+      :items="generos"
+      :items-length="pagination.total" 
+      :loading="loading" 
+      loading-text="Cargando géneros..."
+      class="elevation-1"
+      item-key="id"
+      @update:options="onPageChange"
+      >
+
       <template #item.createdAt="{ item }">
         {{ formatDate(item.createdAt) }}
       </template>
@@ -37,7 +46,7 @@
           mdi-delete
         </v-icon>
       </template>
-    </v-data-table>
+    </v-data-table-server>
 
     <v-dialog v-model="dialog" max-width="400">
       <v-card>
@@ -78,7 +87,7 @@ const filters = reactive({
 
 const pagination = reactive({
   page: 1,
-  limit: 20,
+  limit: 5,
   total: 0,
 })
 
@@ -116,8 +125,9 @@ const fetchGeneros = async () => {
   loading.value = false
 }
 
-function onPageChange(page) {
+function onPageChange({page, itemsPerPage}) {
   pagination.page = page
+  pagination.limit = itemsPerPage
   fetchGeneros()
 }
 
