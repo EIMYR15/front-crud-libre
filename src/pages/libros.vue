@@ -39,33 +39,40 @@
         />
       </v-col>
       <v-col cols="12" md="4">
-        <v-text-field
-          v-model="filters.genero"
-          label="Filtrar por género"
-          clearable
-          prepend-inner-icon="mdi-tag"
-          @keyup.enter="fetchLibros"
+        <v-select
+            v-model="filters.genero"
+            :items="generos"
+            item-value="id"
+            item-title="titulo"
+            label="Genero"
+            class="mb-4"
+            variant="outlined"
+            color="indigo-darken-3"
+            clearable
+            :menu-props="{ maxHeight: 200 }"
         />
       </v-col>
     </v-row>
 
-    <v-data-table
+    <v-data-table-server
       :headers="headers"
       :items="tab === 0 ? libros : librosInactivos"
-      :items-per-page="paginationActivos.limit"
-      :page="paginationActivos.page"
-      :server-items-length="paginationActivos.total"
+      v-model:items-per-page="paginacion.limit"
+      :items-length="paginacion.total"
       :loading="loading"
       loading-title="Cargando libros..."
       class="elevation-1"
       item-key="id"
       dense
-      @update:page="onPageChange"
+      @update:options="onPageChange"
     >
       <template #item.activo="{ item }">
         <v-chip :color="item.activo ? 'green' : 'red'" dark>
           {{ item.activo ? 'Sí' : 'No' }}
         </v-chip>
+      </template>
+      <template #item.genero="{ item }">
+        {{ item.genero.titulo }}
       </template>
       <template #item.createdAt="{ item }">
         {{ formatDate(item.createdAt) }}
@@ -87,14 +94,7 @@
           mdi-delete-forever
         </v-icon>
       </template>
-    </v-data-table>
-
-    <v-pagination
-      v-model="paginationActivos.page"
-      :length="Math.ceil(paginationActivos.total / paginationActivos.limit)"
-      class="my-4"
-      @input="fetchLibros"
-    />
+    </v-data-table-server>
 
     <v-dialog v-model="dialog" max-width="500">
       <v-card>
@@ -122,12 +122,21 @@
               :rules="[v => !!v || 'Requerido']"
               required
             />
-            <v-text-field
-              v-model="form.genero"
-              label="Género"
-              :rules="[v => !!v || 'Requerido']"
-              required
+
+            <v-select
+                v-model="form.generoId"
+                :items="generos"
+                item-value="id"
+                item-title="titulo"
+                label="Genero"
+                class="mb-4"
+                variant="outlined"
+                :rules="[v => !!v || 'Requerido']"
+                required
+                color="indigo-darken-3"
+                :menu-props="{ maxHeight: 200 }"
             />
+
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -148,6 +157,7 @@ import { ref, reactive, onMounted, watch } from 'vue'
 const API_BASE = 'http://localhost:3333/api'
 
 const libros = ref([])
+const generos = ref([])
 const librosInactivos = ref([])
 const loading = ref(false)
 const dialog = ref(false)
@@ -162,12 +172,7 @@ const filters = reactive({
 })
 
 // Paginación separada para activos e inactivos
-const paginationActivos = reactive({
-  page: 1,
-  limit: 10,
-  total: 0,
-})
-const paginationInactivos = reactive({
+const paginacion = reactive({
   page: 1,
   limit: 10,
   total: 0,
@@ -178,7 +183,7 @@ const form = reactive({
   titulo: '',
   autor: '',
   anioPublicacion: '',
-  genero: '',
+  generoId: '',
   activo: true,
 })
 
@@ -199,10 +204,20 @@ function formatDate(dateStr) {
   return dateStr.split('T')[0]
 }
 
+const fetchGeneros = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/generos`)
+    const data = await res.json()
+    generos.value = Array.isArray(data.data) ? data.data : data
+  } catch (e) {
+    alert('Error al cargar los géneros')
+  }
+}
+
 const fetchLibros = async () => {
   loading.value = true
   try {
-    let url = `${API_BASE}/libros?page=${paginationActivos.page}&limit=${paginationActivos.limit}&activo=true`
+    let url = `${API_BASE}/libros?page=${paginacion.page}&limit=${paginacion.limit}&activo=true`
     if (filters.titulo) url += `&titulo=${encodeURIComponent(filters.titulo)}`
     if (filters.autor) url += `&autor=${encodeURIComponent(filters.autor)}`
     if (filters.genero) url += `&genero=${encodeURIComponent(filters.genero)}`
@@ -211,7 +226,7 @@ const fetchLibros = async () => {
     console.log('Libros activos:', data)
     const items = Array.isArray(data.data) ? data.data : data
     libros.value = items
-    paginationActivos.total = data.meta ? data.meta.total : items.length
+    paginacion.total = data.meta ? data.meta.total : items.length
   } catch (e) {
     alert('Error al cargar los libros')
   }
@@ -221,7 +236,7 @@ const fetchLibros = async () => {
 const fetchLibrosInactivos = async () => {
   loading.value = true
   try {
-    let url = `${API_BASE}/libros?page=${paginationInactivos.page}&limit=${paginationInactivos.limit}&activo=false`
+    let url = `${API_BASE}/libros?page=${paginacion.page}&limit=${paginacion.limit}&activo=false`
     if (filters.titulo) url += `&titulo=${encodeURIComponent(filters.titulo)}`
     if (filters.autor) url += `&autor=${encodeURIComponent(filters.autor)}`
     if (filters.genero) url += `&genero=${encodeURIComponent(filters.genero)}`
@@ -229,19 +244,19 @@ const fetchLibrosInactivos = async () => {
     const data = await res.json()
     const items = Array.isArray(data.data) ? data.data : data
     librosInactivos.value = items
-    paginationInactivos.total = data.meta ? data.meta.total : items.length
+    paginacion.total = data.meta ? data.meta.total : items.length
   } catch (e) {
     alert('Error al cargar los libros inactivos')
   }
   loading.value = false
 }
 
-function onPageChange(page) {
+function onPageChange({ page, itemsPerPage }) {
+  paginacion.page = page
+  paginacion.limit = itemsPerPage
   if (tab.value === 0) {
-    paginationActivos.page = page
     fetchLibros()
   } else {
-    paginationInactivos.page = page
     fetchLibrosInactivos()
   }
 }
@@ -261,9 +276,10 @@ function openDialog(item) {
     titulo: '',
     autor: '',
     anioPublicacion: '',
-    genero: '',
+    generoId: '',
     activo: true,
   })
+  fetchGeneros()
   dialog.value = true
 }
 
@@ -278,7 +294,7 @@ async function saveLibro() {
     titulo: form.titulo,
     autor: form.autor,
     anioPublicacion: form.anioPublicacion,
-    genero: form.genero,
+    generoId: form.generoId,
   }
   const url = form.id ? `${API_BASE}/libros/${form.id}` : `${API_BASE}/libros`
   const method = form.id ? 'PUT' : 'POST'
@@ -319,24 +335,26 @@ async function forceDeleteLibro(id) {
 
 // Filtros y tab: reinician la página y recargan la lista correcta
 watch([() => filters.titulo, () => filters.autor, () => filters.genero], () => {
+  paginacion.page = 1
   if (tab.value === 0) {
-    paginationActivos.page = 1
     fetchLibros()
   } else {
-    paginationInactivos.page = 1
     fetchLibrosInactivos()
   }
 })
 
 watch(tab, () => {
+  paginacion.page = 1
   if (tab.value === 0) {
-    paginationActivos.page = 1
     fetchLibros()
   } else {
-    paginationInactivos.page = 1
     fetchLibrosInactivos()
   }
 })
 
-onMounted(fetchAllLibros)
+onMounted(() =>{
+    fetchLibros()
+    fetchGeneros()
+})
+    
 </script>
