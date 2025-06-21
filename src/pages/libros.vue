@@ -21,7 +21,7 @@
 
     <v-row class="mb-4">
       <v-col cols="12" md="4">
-        <v-title-field
+        <v-text-field
           v-model="filters.titulo"
           label="Filtrar por título"
           clearable
@@ -30,7 +30,7 @@
         />
       </v-col>
       <v-col cols="12" md="4">
-        <v-title-field
+        <v-text-field
           v-model="filters.autor"
           label="Filtrar por autor"
           clearable
@@ -39,7 +39,7 @@
         />
       </v-col>
       <v-col cols="12" md="4">
-        <v-title-field
+        <v-text-field
           v-model="filters.genero"
           label="Filtrar por género"
           clearable
@@ -52,9 +52,9 @@
     <v-data-table
       :headers="headers"
       :items="tab === 0 ? libros : librosInactivos"
-      :items-per-page="pagination.limit"
-      :page="pagination.page"
-      :server-items-length="pagination.total"
+      :items-per-page="paginationActivos.limit"
+      :page="paginationActivos.page"
+      :server-items-length="paginationActivos.total"
       :loading="loading"
       loading-title="Cargando libros..."
       class="elevation-1"
@@ -90,8 +90,8 @@
     </v-data-table>
 
     <v-pagination
-      v-model="pagination.page"
-      :length="Math.ceil(pagination.total / pagination.limit)"
+      v-model="paginationActivos.page"
+      :length="Math.ceil(paginationActivos.total / paginationActivos.limit)"
       class="my-4"
       @input="fetchLibros"
     />
@@ -101,38 +101,38 @@
         <v-card-title>
           <span class="title-h5">{{ form.id ? 'Editar Libro' : 'Nuevo Libro' }}</span>
         </v-card-title>
-        <v-card-title>
+        <v-card-text>
           <v-form ref="formRef" v-model="isValid">
-            <v-title-field
+            <v-text-field
               v-model="form.titulo"
               label="Título"
               :rules="[v => !!v || 'Requerido']"
               required
             />
-            <v-title-field
+            <v-text-field
               v-model="form.autor"
               label="Autor"
               :rules="[v => !!v || 'Requerido']"
               required
             />
-            <v-title-field
+            <v-text-field
               v-model="form.anioPublicacion"
               label="Año de publicación"
               type="number"
               :rules="[v => !!v || 'Requerido']"
               required
             />
-            <v-title-field
+            <v-text-field
               v-model="form.genero"
               label="Género"
               :rules="[v => !!v || 'Requerido']"
               required
             />
           </v-form>
-        </v-card-title>
+        </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn title @click="closeDialog()">Cancelar</v-btn>
+          <v-btn text @click="closeDialog()">Cancelar</v-btn>
           <v-btn :disabled="!isValid" color="primary" @click="saveLibro()">
             Guardar
           </v-btn>
@@ -161,7 +161,13 @@ const filters = reactive({
   genero: '',
 })
 
-const pagination = reactive({
+// Paginación separada para activos e inactivos
+const paginationActivos = reactive({
+  page: 1,
+  limit: 10,
+  total: 0,
+})
+const paginationInactivos = reactive({
   page: 1,
   limit: 10,
   total: 0,
@@ -196,26 +202,56 @@ function formatDate(dateStr) {
 const fetchLibros = async () => {
   loading.value = true
   try {
-    let url = `${API_BASE}/libros?page=${pagination.page}&limit=${pagination.limit}`
+    let url = `${API_BASE}/libros?page=${paginationActivos.page}&limit=${paginationActivos.limit}&activo=true`
     if (filters.titulo) url += `&titulo=${encodeURIComponent(filters.titulo)}`
     if (filters.autor) url += `&autor=${encodeURIComponent(filters.autor)}`
     if (filters.genero) url += `&genero=${encodeURIComponent(filters.genero)}`
     const res = await fetch(url)
     const data = await res.json()
-    // Adonis paginate: { data: [...], meta: {...} }
+    console.log('Libros activos:', data)
     const items = Array.isArray(data.data) ? data.data : data
-    libros.value = items.filter(l => l.activo && !l.deletedAt)
-    librosInactivos.value = items.filter(l => !l.activo || l.deletedAt)
-    pagination.total = data.meta ? data.meta.total : items.length
+    libros.value = items
+    paginationActivos.total = data.meta ? data.meta.total : items.length
   } catch (e) {
     alert('Error al cargar los libros')
   }
   loading.value = false
 }
 
+const fetchLibrosInactivos = async () => {
+  loading.value = true
+  try {
+    let url = `${API_BASE}/libros?page=${paginationInactivos.page}&limit=${paginationInactivos.limit}&activo=false`
+    if (filters.titulo) url += `&titulo=${encodeURIComponent(filters.titulo)}`
+    if (filters.autor) url += `&autor=${encodeURIComponent(filters.autor)}`
+    if (filters.genero) url += `&genero=${encodeURIComponent(filters.genero)}`
+    const res = await fetch(url)
+    const data = await res.json()
+    const items = Array.isArray(data.data) ? data.data : data
+    librosInactivos.value = items
+    paginationInactivos.total = data.meta ? data.meta.total : items.length
+  } catch (e) {
+    alert('Error al cargar los libros inactivos')
+  }
+  loading.value = false
+}
+
 function onPageChange(page) {
-  pagination.page = page
-  fetchLibros()
+  if (tab.value === 0) {
+    paginationActivos.page = page
+    fetchLibros()
+  } else {
+    paginationInactivos.page = page
+    fetchLibrosInactivos()
+  }
+}
+
+function fetchAllLibros() {
+  if (tab.value === 0) {
+    fetchLibros()
+  } else {
+    fetchLibrosInactivos()
+  }
 }
 
 function openDialog(item) {
@@ -256,7 +292,7 @@ async function saveLibro() {
     alert(err.message || 'Error al guardar libro')
     return
   }
-  await fetchLibros()
+  await fetchAllLibros()
   closeDialog()
 }
 
@@ -264,32 +300,43 @@ async function deleteLibro(id) {
   if (!confirm('¿Seguro que deseas inactivar este libro?')) return
   const response = await fetch(`${API_BASE}/libros/${id}`, { method: 'DELETE' })
   if (!response.ok) return alert('Error al inactivar libro')
-  await fetchLibros()
+  await fetchAllLibros()
 }
 
 async function restoreLibro(id) {
   if (!confirm('¿Restaurar este libro?')) return
   const response = await fetch(`${API_BASE}/libros/${id}/restore`, { method: 'POST' })
   if (!response.ok) return alert('Error al restaurar libro')
-  await fetchLibros()
+  await fetchAllLibros()
 }
 
 async function forceDeleteLibro(id) {
   if (!confirm('¿Eliminar definitivamente este libro?')) return
   const response = await fetch(`${API_BASE}/libros/${id}/force`, { method: 'DELETE' })
   if (!response.ok) return alert('Error al eliminar definitivamente')
-  await fetchLibros()
+  await fetchAllLibros()
 }
 
+// Filtros y tab: reinician la página y recargan la lista correcta
 watch([() => filters.titulo, () => filters.autor, () => filters.genero], () => {
-  pagination.page = 1
-  fetchLibros()
+  if (tab.value === 0) {
+    paginationActivos.page = 1
+    fetchLibros()
+  } else {
+    paginationInactivos.page = 1
+    fetchLibrosInactivos()
+  }
 })
 
 watch(tab, () => {
-  pagination.page = 1
-  fetchLibros()
+  if (tab.value === 0) {
+    paginationActivos.page = 1
+    fetchLibros()
+  } else {
+    paginationInactivos.page = 1
+    fetchLibrosInactivos()
+  }
 })
 
-onMounted(fetchLibros)
+onMounted(fetchAllLibros)
 </script>
